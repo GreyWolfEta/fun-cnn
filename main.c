@@ -71,16 +71,16 @@ double activation_function(double x, double k)
 {
     return ((
         (double)
-        DOUBLE_ASYMPTOTE_TOP                //  M_top
-        /                       // ---------------  
-        (1 + ((double)1.0 / exp(x * k)))        //  1 + e^{ -xk }
-    )                           // 
-    - // minus!                     //      minus
-    (                           //  
-        (double)                    // 
+        DOUBLE_ASYMPTOTE_TOP                            //      M_top
+        /                                               // ---------------  
+        (1 + ((double)1.0 / exp(x * k)))                //  1 + e^{ -xk }
+    )                                                   // 
+    - // minus!                                         //      minus
+    (                                                   //  
+        (double)                                        // 
         (DOUBLE_ASYMPTOTE_TOP - DOUBLE_ASYMPTOTE_BOT)   //       ΔM
-        /                       // --------------
-        2.0                     //        2
+        /                                               // --------------
+        2.0                                             //        2
     )
     );
 }
