@@ -44,7 +44,7 @@ double random_double(double min, double max)
 
 
 // 
-// Two horizontal asymptotes to secure `double` number overflow,
+// Two horizontal asymptotes to make it impossible for `double` to overflow,
 // basically it computes in "float", but it is double, just limited
 //
 // ps: I really hope my math won't fail me...
@@ -71,16 +71,16 @@ double activation_function(double x, double k)
 {
     return ((
         (double)
-        DOUBLE_ASYMPTOTE_TOP                            //      M_top
-        /                                               // ---------------  
-        (1 + ((double)1.0 / exp(x * k)))                //  1 + e^{ -xk }
+        DOUBLE_ASYMPTOTE_TOP                            //        M_top
+        /                                               // -------------------  
+        (1 + ((double)1.0 / exp(x * k)))                //  1 +  1 / e^{ -xk }
     )                                                   // 
     - // minus!                                         //      minus
     (                                                   //  
         (double)                                        // 
-        (DOUBLE_ASYMPTOTE_TOP - DOUBLE_ASYMPTOTE_BOT)   //       ΔM
-        /                                               // --------------
-        2.0                                             //        2
+        (DOUBLE_ASYMPTOTE_TOP - DOUBLE_ASYMPTOTE_BOT)   //   ΔM
+        /                                               // ------
+        2.0                                             //    2
     )
     );
 }
@@ -93,6 +93,12 @@ double activation_function(double x, double k)
 double activation_function_dx(double x, double k)
 {
     // @todo: implement ds/dx
+    double e = exp(k * x);
+    return DOUBLE_ASYMPTOTE_TOP * (
+            (double)(k * e)
+            /
+            pow((1 + e), 2)
+            );
 }
 
 // 
@@ -198,29 +204,72 @@ void fwd_pass(NN* nn)
     // i think that only one counter would be
     // enough, but for now, i will keep it like that...
     //
-    uint32_t count_N; // raw neurons
-    uint32_t count_B; // biases
-    uint32_t count_K; // 'k' parameter (for activation function)
-    uint32_t count_Z; // processed neurons (after activ. func.)
-    uint64_t count_W; // weights
+    uint32_t count_N0;  // raw neurons
+    uint32_t count_N1;  // biases
+                        // 'k' parameter (for activation function)
+                        // processed neurons (after activ. func.)
+                        // weights
 
     
     // inside nn's data
     uint64_t data_len = nn->in.len;
-    uint64_t data_idx = 0;
+    uint64_t idx_base = 0;
 
-    for (uint64_t l = 0; l < len_L; --l)
+    for (uint64_t l = 0; l < len_L - 1; --l)
     {
 
         // because there's for each neuron: 1 bias, 1 result of act. func. & 'k' parameter
-        count_N = count_B = count_K = count_Z = nn->meta.layers[l];
+        count_N0 = nn->meta.layers[l];
+        count_N1 = nn->meta.layers[l + 1];
 
-        printf("* ");
-        for(; count_N > 0; --count_N)
+        uint64_t idx_n0 = idx_base;                             // index of actual neuron layer
+        uint64_t idx_w  = idx_base + count_N0;                  // index of weights
+        uint64_t idx_b  = idx_w + count_N0 * count_N1;          // index of biases
+        uint64_t idx_n1 = idx_w + (2 * count_N1);               // index of the next pre-activated neuron layer
+                                                                //          (before activation_function)
+
+        // 
+        // preparing next neuron layer for sum of values from previous layer
+        //
+        for (int n1 = 0; n1 < count_N1 && n1 < data_len; ++n1)
         {
-            printf("%lf ", nn->in.data[data_idx++]);
+            nn->in.data[n1 + idx_n1] = 0;
         }
-        printf("\n\n");
+
+
+        // 
+        // ===========================
+        // MATRIX N→W→N CALCULATION
+        // ===========================
+        //
+        // previous layer's neuron
+        for (int n0 = 0; n0 < count_N0 && n0 + idx_n0 < data_len; ++n0)
+        {
+            // next layer's neuron
+            for (int n1 = 0; n1 < count_N1 && n1 + idx_n1 < data_len; ++n1)
+            {
+                // -------------------------------------------------------------------------------------------  next target layer of neurons, these neurons store values before applying activ. func.
+                // |                         -----------------------------------------------------------------  value of the previous layer (values from activation function)
+                // |                         |                         ---------------------------------------  weights between these two layers
+                // |                         |                         |       -------------------------------  target pre-activated neuron in the next layer
+                // |                         |                         |       |    --------------------------  points to the first weight stored in this "weight layer"
+                // |                         |                         |       |    |          ---------------  shifts pointer of weights to group of weights of the appropriate neuron
+                // |                         |                         |       |    |          |      
+                // V                         V                         V       V    V          V      
+                // pre-activation layer  +=  prevous activated layer * weights[n1 + base_idx + offset]
+                nn->in.data[n1 + idx_n1] += nn->in.data[n0 + idx_n0] * nn->in.data[n1 + idx_w + n1 * count_N1];
+            }
+        }
+
+        // 
+        // ===========================================
+        // ADD BIASES AND APPLYING ACTIVATION FUNCTION
+        // ===========================================
+        //
+        for (int n1 = 0; n1 + idx_n1 < count_N1; ++n1)
+        {
+            // @todo: implement 'b' and 'k' biases with application of activation function
+        }
     }
 }
 
@@ -241,11 +290,11 @@ int main( void)
 
     NN nn;
     uint32_t layers[] = {
-        16,16
+        2, 2
     };
     uint64_t len = sizeof(layers)/sizeof(uint32_t);
 
-    init_nn(&nn, 4, len, layers, 2);
+    init_nn(&nn, 1, len, layers, 2);
 
     printf("NN: ");
     for (uint64_t i = 0; i < nn.meta.len; ++i) {
@@ -255,7 +304,7 @@ int main( void)
 
     double input[] = { 0, -3.5, 2.5, 1 };
 
-    set_input(&nn, 4, input);
+    set_input(&nn, 2, input);
     fwd_pass(&nn);
 
     free_nn(&nn);
